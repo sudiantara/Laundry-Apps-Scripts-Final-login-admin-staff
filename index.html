@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { background-color: #f1f5f9; font-family: 'Segoe UI', sans-serif; padding-bottom: 50px; }
+    #loginOverlay { position:fixed; top:0; left:0; width:100%; height:100%; background:linear-gradient(135deg, #3498db, #2c3e50); z-index:9999; display:flex; align-items:center; justify-content:center; }
+    .card-dashboard { border: none; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: bold; color: white; text-transform: uppercase; }
+    .bg-masuk { background-color: #f1c40f; } .bg-proses { background-color: #3498db; } .bg-selesai { background-color: #27ae60; } .bg-diambil { background-color: #2c3e50; }
+    .filter-pill { cursor: pointer; border: 1px solid #ddd; background: white; transition: 0.3s; font-size: 11px; }
+    .filter-pill.active { background: #3498db; color: white !important; }
+    .btn-bayar { background-color: #e74c3c; color: white; border-radius: 5px; font-size: 10px; padding: 2px 8px; border: none; }
+    .admin-only { display: none; }
+    #searchBox { border-radius: 20px; padding-left: 15px; border: 1px solid #ced4da; }
+  </style>
+</head>
+<body>
+
+<div id="loginOverlay">
+  <div class="card p-4 shadow-lg text-center" style="width:320px; border-radius:20px;">
+    <h3 class="fw-bold">LAUNDRY PRO</h3>
+    <input type="password" id="pinInput" class="form-control mb-3 text-center py-3 fw-bold" placeholder="PIN" style="font-size:24px; letter-spacing:8px;">
+    <button class="btn btn-primary w-100 py-2 fw-bold" onclick="doLogin()">MASUK</button>
+    <div id="loginErr" class="text-danger mt-2 small" style="display:none;">PIN SALAH!</div>
+  </div>
+</div>
+
+<div class="container py-3">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h4 class="fw-bold text-primary mb-0">🧺 DASHBOARD</h4>
+      <a href="#" class="text-danger small fw-bold text-decoration-none" id="btnLogout" style="display:none" onclick="doLogout()">[ ↩ LOGOUT ]</a>
+    </div>
+    <div class="d-flex gap-1">
+      <button class="btn btn-warning btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalKeluar">+ BIAYA</button>
+      <button class="btn btn-primary btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalOrder">+ ORDER</button>
+    </div>
+  </div>
+
+  <div class="row g-2 mb-4 text-center">
+    <div class="col-4"><div class="card card-dashboard p-2"><h6>MASUK</h6><h3 id="c-masuk">0</h3></div></div>
+    <div class="col-4"><div class="card card-dashboard p-2"><h6>PROSES</h6><h3 id="c-proses">0</h3></div></div>
+    <div class="col-4"><div class="card card-dashboard p-2"><h6>SIAP</h6><h3 id="c-selesai">0</h3></div></div>
+  </div>
+
+  <div class="admin-only mb-4">
+    <div class="card card-dashboard p-3 bg-white">
+      <h6 class="fw-bold text-dark text-center">📊 ANALISA LABA RUGI</h6>
+      <div class="row text-center g-2 mt-2">
+        <div class="col-4"><small class="text-muted d-block">OMZET</small><span class="fw-bold text-success" id="admin-omzet">0</span></div>
+        <div class="col-4"><small class="text-muted d-block">BIAYA</small><span class="fw-bold text-danger" id="admin-biaya">0</span></div>
+        <div class="col-4"><small class="text-muted d-block">PROFIT</small><span class="fw-bold text-primary" id="admin-laba">0</span></div>
+      </div>
+      <div class="mt-3" style="height: 150px;"><canvas id="chartLaba"></canvas></div>
+      
+      <div class="mt-4">
+        <h6 class="fw-bold small text-muted">💸 RIWAYAT PENGELUARAN</h6>
+        <div class="table-responsive" style="max-height: 180px;">
+          <table class="table table-sm table-striped" style="font-size: 10px;">
+            <thead class="table-dark"><tr><th>TGL</th><th>KET</th><th>JUMLAH</th></tr></thead>
+            <tbody id="listBiayaBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <button class="btn btn-danger btn-sm w-100 mt-3 fw-bold shadow-sm" onclick="printDoc()">📄 CETAK REKAP DOC</button>
+    </div>
+  </div>
+
+  <div class="card card-dashboard p-3 mb-4">
+    <div class="row g-2 mb-3">
+      <div class="col-6"><label class="small fw-bold">DARI:</label><input type="date" id="dateFrom" class="form-control" onchange="fetchData()"></div>
+      <div class="col-6"><label class="small fw-bold">SAMPAI:</label><input type="date" id="dateTo" class="form-control" onchange="fetchData()"></div>
+    </div>
+    <input type="text" id="searchBox" class="form-control shadow-sm" placeholder="🔍 Cari nama pelanggan atau nota..." onkeyup="filterAndRender()">
+  </div>
+
+  <div class="card card-dashboard p-3">
+    <div class="d-flex gap-1 mb-3 flex-wrap">
+       <span class="badge filter-pill rounded-pill px-3 py-2 text-dark active" onclick="applyStatusFilter('ALL', this)">AKTIF</span>
+       <span class="badge filter-pill rounded-pill px-3 py-2 text-dark" onclick="applyStatusFilter('MASUK', this)">MASUK</span>
+       <span class="badge filter-pill rounded-pill px-3 py-2 text-dark" onclick="applyStatusFilter('PROSES', this)">PROSES</span>
+       <span class="badge filter-pill rounded-pill px-3 py-2 text-dark" onclick="applyStatusFilter('DIAMBIL', this)">RIWAYAT</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle" style="font-size: 11px;">
+        <thead class="table-light"><tr><th>PELANGGAN</th><th>TOTAL</th><th>STATUS</th><th>AKSI</th></tr></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modalDetail" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header bg-dark text-white"><h5>Detail Pelanggan</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body" id="detailBody"></div></div></div></div>
+
+<div class="modal fade" id="modalChecklist" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white"><h5>Checklist #<span id="checkNota"></span></h5></div>
+      <div class="modal-body">
+        <div id="checklistItems" style="max-height: 300px; overflow-y: auto;"></div>
+        <hr>
+        <textarea id="checkLain" class="form-control" rows="2" placeholder="Keterangan lainnya..."></textarea>
+      </div>
+      <div class="modal-footer"><button class="btn btn-primary w-100 fw-bold" onclick="prosesCuciFinal()">SIMPAN & CUCI</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modalOrder" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><form id="orderForm"><div class="modal-header bg-primary text-white"><h5>Order Baru</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body row g-2">
+  <div class="col-6"><label class="small">NOTA</label><input type="text" name="nota" class="form-control" required></div>
+  <div class="col-6"><label class="small">NAMA</label><input type="text" name="nama" class="form-control" required></div>
+  <div class="col-12"><label class="small">HOTEL</label><input type="text" name="alamat" class="form-control"></div>
+  <div class="col-4"><label class="small">KAMAR</label><input type="text" name="no_kamar" class="form-control"></div>
+  <div class="col-4"><label class="small">BERAT (Kg)</label><input type="text" name="berat" class="form-control"></div>
+  <div class="col-4"><label class="small">TOTAL (Rp)</label><input type="number" name="harga" class="form-control" required></div>
+  <div class="col-6"><label class="small">LAYANAN</label><select name="layanan" class="form-select"><option>Normal</option><option>Express</option></select></div>
+  <div class="col-6"><label class="small">BAYAR</label><select name="status_bayar" class="form-select"><option value="Belum Bayar">Belum</option><option value="Lunas">Lunas</option></select></div>
+  <div class="col-12"><label class="small">ESTIMASI SELESAI</label><input type="datetime-local" name="jam_selesai" class="form-control"></div>
+</div><div class="modal-footer"><button type="submit" class="btn btn-primary w-100">SIMPAN ORDER</button></div></form></div></div></div>
+
+<div class="modal fade" id="modalKeluar" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><form id="keluarForm"><div class="modal-header bg-warning"><h5>Catat Biaya</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body">
+  <label class="small">KATEGORI</label><select name="kategori" class="form-select mb-2"><option>Bahan Baku</option><option>Operasional</option><option>Gaji</option></select>
+  <label class="small">JUMLAH (Rp)</label><input type="number" name="jumlah" class="form-control mb-2" required>
+  <label class="small">KETERANGAN</label><input type="text" name="keterangan" class="form-control" required>
+</div><div class="modal-footer"><button type="submit" class="btn btn-warning w-100">SIMPAN BIAYA</button></div></form></div></div></div>
+
+<input type="file" id="cameraInput" accept="image/*" capture="camera" style="display:none">
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  let allData = [];
+  let currentStatusFilter = 'ALL';
+  let currentUser = { role: '', name: '' };
+  let myChart;
+  let cNota, cNama;
+  const itemsCheck = ['Baju', 'Celana', 'Celana Dalam', 'Kaos Kaki', 'Kemeja', 'Topi', 'Tas', 'Sepatu', 'Sprei', 'Selimut'];
+
+  function doLogin() {
+    const pin = document.getElementById('pinInput').value;
+    google.script.run.withSuccessHandler(user => {
+      if (user) {
+        currentUser = user;
+        document.getElementById('loginOverlay').style.display = 'none';
+        document.getElementById('btnLogout').style.display = 'inline';
+        if (user.role === 'ADMIN') document.querySelectorAll('.admin-only').forEach(e => e.style.display = 'block');
+        initDates();
+        fetchData();
+      } else { document.getElementById('loginErr').style.display = 'block'; }
+    }).checkLogin(pin);
+  }
+
+  function doLogout() { if(confirm("Keluar sistem?")) location.reload(); }
+
+  function initDates() {
+    const n = new Date();
+    const hariIni = new Date(n.getTime() - n.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+    document.getElementById('dateFrom').value = hariIni;
+    document.getElementById('dateTo').value = hariIni;
+  }
+
+  function fetchData() {
+    google.script.run.withSuccessHandler(res => { allData = res; filterAndRender(); }).getLaundryData();
+  }
+
+  function filterAndRender() {
+    const from = document.getElementById('dateFrom').value;
+    const to = document.getElementById('dateTo').value;
+    const query = document.getElementById('searchBox').value.toLowerCase();
+    const tbody = document.getElementById('tableBody');
+    tbody.innerHTML = '';
+    let stats = { MASUK: 0, PROSES: 0, SELESAI: 0, OMZET_P: 0 };
+
+    allData.forEach(row => {
+      const orderDate = row[0];
+      const statusOrder = row[8];
+      const matchesSearch = row[2].toLowerCase().includes(query) || row[1].toString().includes(query);
+      const isInRange = (!from || orderDate >= from) && (!to || orderDate <= to);
+
+      if(orderDate === from) {
+        if(statusOrder === 'MASUK') stats.MASUK++;
+        if(statusOrder === 'PROSES') stats.PROSES++;
+        if(statusOrder === 'SELESAI') stats.SELESAI++;
+      }
+
+      if(isInRange && matchesSearch) {
+        if(row[10] === 'Lunas') stats.OMZET_P += Number(row[7]);
+        let show = (currentStatusFilter === 'ALL' && statusOrder !== 'DIAMBIL') || (currentStatusFilter !== 'ALL' && statusOrder === currentStatusFilter);
+
+        if(show) {
+          const btnBayar = row[10] === 'Lunas' ? '<span class="text-success fw-bold">LUNAS</span>' : `<button class="btn-bayar" onclick="event.stopPropagation(); pay('${row[1]}')">BAYAR</button>`;
+          const aksiBtn = `
+            <button class="btn btn-sm btn-outline-secondary py-0 me-1" onclick="event.stopPropagation(); openCam('${row[1]}','${row[2]}')">📸</button>
+            ${statusOrder === 'MASUK' ? 
+              `<button class="btn btn-sm btn-warning py-0" onclick="event.stopPropagation(); openChecklist('${row[1]}')">CUCI</button>` : 
+              `<button class="btn btn-sm btn-primary py-0" onclick="event.stopPropagation(); status('${row[1]}','${statusOrder==='PROSES'?'SELESAI':'DIAMBIL'}')">NEXT</button>`
+            }`;
+          const dataSafe = JSON.stringify(row).replace(/'/g, "\\'");
+          
+          tbody.insertAdjacentHTML('afterbegin', `
+            <tr onclick='showDetail(${dataSafe})' style="cursor:pointer">
+              <td><b>${row[2]}</b><br><small class="text-muted">#${row[1]} | ${row[6]}</small></td>
+              <td>Rp ${Number(row[7]).toLocaleString()}<br>${btnBayar}</td>
+              <td><span class="status-badge bg-${row[8].toLowerCase()}">${row[8]}</span></td>
+              <td><div class="d-flex">${aksiBtn}</div></td>
+            </tr>`);
+        }
+      }
+    });
+    document.getElementById('c-masuk').innerText = stats.MASUK;
+    document.getElementById('c-proses').innerText = stats.PROSES;
+    document.getElementById('c-selesai').innerText = stats.SELESAI;
+    if(currentUser.role === 'ADMIN') calculateProfit(stats.OMZET_P);
+  }
+
+  function showDetail(r) {
+    document.getElementById('detailBody').innerHTML = `
+      <table class="table table-sm small">
+        <tr><td width="40%"><b>Nota / Nama</b></td><td>: #${r[1]} / ${r[2]}</td></tr>
+        <tr><td><b>Hotel/Alamat</b></td><td>: ${r[3]} (Kamar: ${r[4]})</td></tr>
+        <tr><td><b>Layanan / Berat</b></td><td>: ${r[6]} / ${r[5]}Kg</td></tr>
+        <tr><td><b>Total Harga</b></td><td>: Rp ${Number(r[7]).toLocaleString()}</td></tr>
+        <tr><td><b>Estimasi Selesai</b></td><td>: ${r[9] || '-'}</td></tr>
+        <tr><td><b>Status Cuci</b></td><td>: <b>${r[8]}</b></td></tr>
+        <tr><td><b>Status Bayar</b></td><td>: <span class="badge ${r[10]==='Lunas'?'bg-success':'bg-danger'}">${r[10]}</span></td></tr>
+        <tr><td><b>Rincian Item</b></td><td class="text-primary fw-bold">: ${r[13] || '-'}</td></tr>
+      </table>
+      <hr>
+      <div class="text-center">
+        ${r[12] ? `<a href="${r[12]}" target="_blank" class="btn btn-primary btn-sm w-100 shadow-sm">📂 BUKA FOTO DI DRIVE</a>` : '<p class="text-muted small"><i>Belum ada foto</i></p>'}
+      </div>`;
+    new bootstrap.Modal(document.getElementById('modalDetail')).show();
+  }
+
+  function calculateProfit(omzet) {
+    google.script.run.withSuccessHandler(biayaArr => {
+      let totalBiaya = 0;
+      const listBody = document.getElementById('listBiayaBody');
+      listBody.innerHTML = ''; 
+      biayaArr.forEach(b => {
+        totalBiaya += b.jumlah;
+        listBody.innerHTML += `<tr><td>${b.tanggal}</td><td>${b.keterangan}</td><td class="text-danger">Rp ${b.jumlah.toLocaleString()}</td></tr>`;
+      });
+      document.getElementById('admin-omzet').innerText = omzet.toLocaleString();
+      document.getElementById('admin-biaya').innerText = totalBiaya.toLocaleString();
+      document.getElementById('admin-laba').innerText = (omzet - totalBiaya).toLocaleString();
+      renderChart(omzet, totalBiaya);
+    }).getFinancialData();
+  }
+
+  function renderChart(o, b) {
+    const ctx = document.getElementById('chartLaba');
+    if(myChart) myChart.destroy();
+    myChart = new Chart(ctx, { type: 'bar', data: { labels: ['Omzet', 'Biaya'], datasets: [{ data: [o, b], backgroundColor: ['#2ecc71', '#e74c3c'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } });
+  }
+
+  function printDoc() {
+    const f = document.getElementById('dateFrom').value;
+    const t = document.getElementById('dateTo').value;
+    google.script.run.withSuccessHandler(url => window.open(url, '_blank')).generateDocReport(f, t, document.getElementById('admin-omzet').innerText, document.getElementById('admin-biaya').innerText, document.getElementById('admin-laba').innerText);
+  }
+
+  function openChecklist(nota) {
+    cNota = nota; document.getElementById('checkNota').innerText = nota;
+    document.getElementById('checklistItems').innerHTML = itemsCheck.map(it => `
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="fw-bold small">${it}</span>
+        <div class="input-group input-group-sm" style="width:110px;">
+          <button type="button" class="btn btn-outline-secondary" onclick="step('${it}', -1)">-</button>
+          <input type="number" id="v-${it}" class="form-control text-center p-0" value="0">
+          <button type="button" class="btn btn-outline-secondary" onclick="step('${it}', 1)">+</button>
+        </div>
+      </div>`).join('');
+    new bootstrap.Modal(document.getElementById('modalChecklist')).show();
+  }
+
+  function step(id, v) { 
+    let e = document.getElementById('v-'+id); 
+    let val = parseInt(e.value) + v; 
+    if(val >= 0) e.value = val; 
+  }
+
+  function prosesCuciFinal() {
+    let res = []; itemsCheck.forEach(it => { let v = document.getElementById('v-'+it).value; if(v > 0) res.push(it + ":" + v); });
+    let lain = document.getElementById('checkLain').value; if(lain) res.push("Lain:" + lain);
+    google.script.run.withSuccessHandler(() => { bootstrap.Modal.getInstance(document.getElementById('modalChecklist')).hide(); fetchData(); }).updateWithChecklist(cNota, "PROSES", res.join(', '));
+  }
+
+  function applyStatusFilter(s, el) { document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active')); el.classList.add('active'); currentStatusFilter = s; filterAndRender(); }
+  function pay(id) { if(confirm("Lunas?")) google.script.run.withSuccessHandler(fetchData).updatePaymentStatus(id); }
+  function status(id, n) { if(confirm("Update status ke "+n+"?")) google.script.run.withSuccessHandler(fetchData).updateOrderStatus(id, n); }
+  function openCam(nota, nama) { cNota = nota; cNama = nama; document.getElementById('cameraInput').click(); }
+
+  document.getElementById('cameraInput').onchange = function(e) {
+    if(!e.target.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = function(evt) { 
+      google.script.run.withSuccessHandler(() => { alert("Foto Tersimpan!"); fetchData(); }).uploadFoto(evt.target.result, cNota, cNama); 
+    };
+    reader.readAsDataURL(e.target.files[0]);
+  };
+
+  document.getElementById('orderForm').onsubmit = function(e) { e.preventDefault(); google.script.run.withSuccessHandler(() => { bootstrap.Modal.getInstance(document.getElementById('modalOrder')).hide(); this.reset(); fetchData(); }).saveOrder(Object.fromEntries(new FormData(this))); };
+  document.getElementById('keluarForm').onsubmit = function(e) { e.preventDefault(); let fd = Object.fromEntries(new FormData(this)); fd.user = currentUser.name; google.script.run.withSuccessHandler(() => { bootstrap.Modal.getInstance(document.getElementById('modalKeluar')).hide(); this.reset(); fetchData(); }).savePengeluaran(fd); };
+</script>
+</body>
+</html>
